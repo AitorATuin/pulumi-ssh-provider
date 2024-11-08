@@ -137,11 +137,11 @@ def get_user(user: str) -> pwd.struct_passwd | None:
 class Users:
     users: set[User] = field(default_factory=set)
     name: str = "users"
-    ignore_users: set[User] = field(default_factory=set)
+    ignore_users: set[str] = field(default_factory=set)
     all_users: set[User] | None = None
 
     async def provision(self, apply: bool = False) -> None:
-        delete_users, add_users = self.state(
+        delete_users, add_users, update_users = self.state(
             Users(
                 users=self.all_users
                 if self.all_users is not None
@@ -160,6 +160,10 @@ class Users:
             else:
                 print(f"Adding user {user.name}")
 
+        for user in update_users:
+            if apply:
+                await user.write_authorized_keys()
+
     async def deprovision(self, apply: bool = False) -> None:
         current_users = set(map(lambda u: u.name, self.all_users or manageable_users()))
         for user in [user for user in self.users if user.name in current_users]:
@@ -168,30 +172,41 @@ class Users:
             else:
                 print(f"Removing user {user.name}")
 
-    def state(self, all_users: "Users") -> tuple[set[User], set[User]]:
+    def state(self, all_users: "Users") -> tuple[set[User], set[User], set[User]]:
         """
-        Return users to delete, users to add
+        Return users to delete, create or update.
+
+        Note that a modification here means changing the ssh_key
         """
         add_users = set()
+        update_users = set()
         existing_users = set()
         all_users_dict = {s.name: s for s in all_users.users}
         for user in self.users:
             match all_users_dict.get(user.name):
-                case User() as user2 if user != user2:
-                    add_users.add(user)
-                case User():
+                case User(
+                    key=key,
+                    home=home,
+                ) if user.key != key or user.home != home:
+                    update_users.add(u_user := User(
+                        name=user.name,
+                        key=user.key,
+                        home=home
+                    ))
+                    all_users_dict[user.name] = u_user
+                case User() as user:
                     existing_users.add(user)
                 case None:
                     add_users.add(user)
-
         return (
             set(
                 filter(
                     lambda u: u.name not in self.ignore_users,
-                    (set(all_users_dict.values()) - add_users.union(existing_users)),
+                    (set(all_users_dict.values()) - add_users.union(existing_users).union(update_users)),
                 )
             ),
             add_users,
+            update_users,
         )
 
 
