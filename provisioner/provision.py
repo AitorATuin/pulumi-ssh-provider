@@ -14,7 +14,11 @@ from typing import Protocol, Callable, AsyncIterator, Any
 import typedload
 
 
-__all__ = ["Users"]
+__all__ = [
+    "Users",
+    "load_users_config",
+    "load_pre_users_config",
+]
 
 
 ASSETS_DIR = Path("/tmp") / "provisioner"
@@ -92,16 +96,27 @@ def load_pre_users_config(id: str) -> UsersConfig:
     )
 
 
-def load_users_config(id: str) -> UsersConfig:
-    pre_users_config = load_pre_users_config(id)
+def load_users_config(
+    id: str,
+    custom_pre_users_config: UsersConfig | None = None,
+    custom_manageable_users: frozenset[User] | None = None,
+) -> UsersConfig:
+    pre_users_config = custom_pre_users_config or load_pre_users_config(id)
 
     to_delete, to_add, to_update, to_sudoers = Users(
         users=pre_users_config.users, ignore_users=pre_users_config.ignore
-    ).state(Users(users=manageable_users()))
+    ).state(
+        Users(
+            users=custom_manageable_users
+            if custom_manageable_users is not None
+            else manageable_users()
+        )
+    )
+
     return UsersConfig(
         ignore=pre_users_config.ignore,
         users=frozenset(to_add.union(to_update).union(to_sudoers)),
-        delete=frozenset(to_delete),
+        delete=frozenset(to_delete) if to_delete else None,
     )
 
 
@@ -302,9 +317,12 @@ class Users:
                 case User(
                     key=key,
                     home=home,
-                ) if user.key != key or user.home != home:
+                    sudo=sudo,
+                ) if user.key != key or user.home != home or user.sudo != sudo:
                     update_users.add(
-                        u_user := User(name=user.name, key=user.key, home=home)
+                        u_user := User(
+                            name=user.name, key=user.key, home=home, sudo=sudo
+                        )
                     )
                     all_users_dict[user.name] = u_user
                 case User() as user:

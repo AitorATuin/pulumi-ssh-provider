@@ -2,7 +2,7 @@ from pathlib import Path
 
 from unittest.mock import call
 
-from provisioner.provision import Users, User
+from provisioner.provision import Users, User, load_users_config, UsersConfig
 from tests.common import mock_commands
 
 
@@ -260,3 +260,73 @@ async def test_users_4():
         assert commands.write_authorized_keys.call_args_list == [
             call(Path("/root/.ssh/authorized_keys"), "key1-some-key")
         ]
+
+
+async def test_load_users_config_0() -> None:
+    assert (
+        load_users_config(
+            id="6666",
+            custom_pre_users_config=(
+                uc := UsersConfig(
+                    users=frozenset(
+                        {
+                            generate_test_user("user1"),
+                            generate_test_user("user2"),
+                            generate_test_user("user3"),
+                        }
+                    )
+                )
+            ),
+            custom_manageable_users=frozenset(),
+        )
+        == uc
+    )
+
+
+async def test_load_users_config_1() -> None:
+    uc = UsersConfig(
+        users=frozenset(
+            {
+                generate_test_user("user1"),
+                generate_test_user("user2"),
+                generate_test_user("user3"),
+            }
+        )
+    )
+    assert (
+        load_users_config(
+            id="6666",
+            custom_pre_users_config=uc,
+            custom_manageable_users=uc.users,
+        )
+        == UsersConfig()
+    )
+
+
+async def test_load_users_config_2() -> None:
+    uc = UsersConfig(
+        users=frozenset(
+            {
+                generate_test_user("user1"),
+                generate_test_user("user2"),
+                generate_test_user("user3", sudo=True),
+            }
+        )
+    )
+    assert load_users_config(
+        id="6666",
+        custom_pre_users_config=uc,
+        custom_manageable_users=frozenset(
+            {
+                generate_test_user("user1"),
+                generate_test_user("user2"),
+                generate_test_user("user3", sudo=False),
+            }
+        ),
+    ) == UsersConfig(
+        users=frozenset(
+            {
+                generate_test_user("user3", sudo=False),
+            }
+        )
+    )
