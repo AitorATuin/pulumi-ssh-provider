@@ -6,7 +6,7 @@ import pwd
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, Callable, AsyncIterator
+from typing import Protocol, Callable, AsyncIterator, Any
 
 import typedload
 
@@ -19,9 +19,49 @@ SUDOERS_FILE = Path("/etc/sudoers.d") / "ssh-provisioner"
 
 
 @dataclass(frozen=True)
+class User:
+    name: str
+    home: Path | None = None
+    key: str | None = None
+    sudo: bool = True
+
+    @property
+    def home_dir(self) -> Path:
+        return self.home or Path("/home/") / self.name
+
+    async def write_authorized_keys(self) -> None:
+        if self.key:
+            await write_authorized_keys(self.authorized_keys, self.key)
+
+    async def delete(self) -> None:
+        await run_command(["/usr/sbin/userdel", "-r", self.name])
+
+    async def create(self) -> None:
+        await run_command(
+            ["/usr/sbin/useradd", "-m", "-U"]
+            + (["-G", "sudo"] if self.sudo else [])
+            + [self.name]
+        )
+        await self.write_authorized_keys()
+
+    @property
+    def authorized_keys(self) -> Path:
+        return self.home_dir / ".ssh" / "authorized_keys"
+
+
+@dataclass(frozen=True)
 class UsersConfig:
     ignore: frozenset[str] = field(default_factory=frozenset)
     users: frozenset[User] = field(default_factory=frozenset)
+
+
+def load_pre_users_config(id: str) -> UsersConfig:
+    return typedload.load(
+        json.loads(
+            base64.b64decode((ASSETS_DIR / id / "payload").read_bytes()).decode("utf-8")
+        )["data"],
+        UsersConfig,
+    )
 
 
 @dataclass(frozen=True)
@@ -66,7 +106,7 @@ async def write_authorized_keys(authorized_keys: Path, key: str) -> None:
         f.write(base64.b64decode(key))
 
 
-def write_sudoers_content(users: list[User]) -> None:
+async def write_sudoers_content(users: list[User]) -> None:
     with SUDOERS_FILE.open("w") as f:
         f.write(
             "\n".join(
@@ -76,34 +116,6 @@ def write_sudoers_content(users: list[User]) -> None:
         )
 
 
-@dataclass(frozen=True)
-class User:
-    name: str
-    home: Path
-    key: str | None
-    sudo: bool = True
-
-    async def write_authorized_keys(self) -> None:
-        if self.key:
-            await write_authorized_keys(self.authorized_keys, self.key)
-
-    async def delete(self) -> None:
-        await run_command(["/usr/sbin/userdel", "-r", self.name])
-
-    async def create(self) -> None:
-        await run_command(
-            ["/usr/sbin/useradd", "-m", "-U"]
-            + (["-G", "sudo"] if self.sudo else [])
-            + [self.name]
-        )
-        await self.write_authorized_keys()
-
-    @property
-    def authorized_keys(self) -> Path:
-        return self.home / ".ssh" / "authorized_keys"
-
-
-@dataclass
 class FileInfo:
     source: Path
     dest: Path
@@ -111,7 +123,7 @@ class FileInfo:
 
 
 @dataclass
-class Step(Protocol):
+class Step[R](Protocol):
     @property
     def __match_args__(self) -> tuple[str, ...]:
         return ("name",)
@@ -122,6 +134,8 @@ class Step(Protocol):
     async def provision(self, apply: bool = False) -> None: ...
 
     async def deprovision(self, apply: bool = False) -> None: ...
+
+    async def refresh(self, step_id: str, pre: bool) -> R: ...
 
 
 def read_pub_key(p: Path) -> str | None:
@@ -177,10 +191,10 @@ class Users:
                 await user.write_authorized_keys()
 
         if sudo_users and apply:
-            write_sudoers_content(sudo_users)
+            await write_sudoers_content(sudo_users)
 
         elif sudo_users:
-            print(f"Adding users to suders: ',',{sudo_users}")
+            print(f"Adding users to sudoers: {','.join([u.name for u in sudo_users])}")
 
     async def deprovision(self, apply: bool = False) -> None:
         current_users = set(map(lambda u: u.name, self.all_users or manageable_users()))
@@ -189,6 +203,16 @@ class Users:
                 await user.delete()
             else:
                 print(f"Removing user {user.name}")
+
+    async def refresh(self, step_id: str, pre: bool) -> "Users":
+        if pre:
+            users_config = load_pre_users_config(step_id)
+            return Users(
+                users=users_config.users,
+                ignore_users=users_config.ignore,
+            )
+        else:
+            raise NotImplemented()
 
     def state(
         self, all_users: "Users"
@@ -249,6 +273,13 @@ class Provisioner:
             print(f"Deprovision step {s.name}")
             await s.deprovision(apply=apply)
 
+    async def refresh(self, step: str | None, step_id: str, pre: bool) -> None:
+        xs = []
+        for s in filter(lambda s: not step or s.name == step, self.steps):
+            print(f"Refresh step {s.name}")
+            xs.append(await s.refresh(step_id=step_id, pre=pre))
+        print(typedload.dump(xs))
+
 
 @asynccontextmanager
 async def create_provisioner(id: str, step: str) -> AsyncIterator[Provisioner]:
@@ -276,13 +307,15 @@ async def create_provisioner(id: str, step: str) -> AsyncIterator[Provisioner]:
         pass
 
 
-async def run(step: str, command: str, id: str, apply: bool) -> None:
+async def run(step: str, command: str, id: str, apply: bool, pre: bool) -> None:
     async with create_provisioner(id, step) as provisioner:
         match command:
             case "provision":
                 await provisioner.provision(step=step, apply=apply)
             case "deprovision":
                 await provisioner.deprovision(step=step, apply=apply)
+            case "refresh":
+                await provisioner.refresh(step=step, step_id=id, pre=pre)
             case command:
                 raise Exception(f"Command unknown: {command}")
 
@@ -290,8 +323,9 @@ async def run(step: str, command: str, id: str, apply: bool) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--pre", action="store_true")
     parser.add_argument("step")
     parser.add_argument("command")
     parser.add_argument("id")
     args = parser.parse_args()
-    asyncio.run(run(args.step, args.command, args.id, args.apply))
+    asyncio.run(run(args.step, args.command, args.id, args.apply, args.pre))
