@@ -135,10 +135,10 @@ def get_user(user: str) -> pwd.struct_passwd | None:
 
 @dataclass(frozen=True)
 class Users:
-    users: set[User] = field(default_factory=set)
+    users: frozenset[User] = field(default_factory=frozenset)
     name: str = "users"
-    ignore_users: set[str] = field(default_factory=set)
-    all_users: set[User] | None = None
+    ignore_users: frozenset[str] = field(default_factory=frozenset)
+    all_users: frozenset[User] | None = None
 
     async def provision(self, apply: bool = False) -> None:
         delete_users, add_users, update_users = self.state(
