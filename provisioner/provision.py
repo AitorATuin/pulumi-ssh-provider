@@ -1,10 +1,13 @@
 import argparse
 import asyncio.subprocess
 import base64
+import enum
+import functools
 import json
 import pwd
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from linecache import cache
 from pathlib import Path
 from typing import Protocol, Callable, AsyncIterator, Any
 
@@ -18,6 +21,12 @@ ASSETS_DIR = Path("/tmp") / "provisioner"
 SUDOERS_FILE = Path("/etc/sudoers.d") / "ssh-provisioner"
 
 
+class ResourceState(enum.Enum):
+    MISSING = 0
+    PRESENT = 1
+    OUTDATED = 2
+
+
 @dataclass(frozen=True)
 class User:
     name: str
@@ -28,6 +37,10 @@ class User:
     @property
     def home_dir(self) -> Path:
         return self.home or Path("/home/") / self.name
+
+    async def has_authorized_keys(self) -> None:
+        if self.key:
+            await write_authorized_keys(self.authorized_keys, self.key)
 
     async def write_authorized_keys(self) -> None:
         if self.key:
@@ -48,11 +61,26 @@ class User:
     def authorized_keys(self) -> Path:
         return self.home_dir / ".ssh" / "authorized_keys"
 
+    def state(self) -> ResourceState:
+        if self.name not in manageable_user_names():
+            return ResourceState.MISSING
+        if read_pub_key(self.authorized_keys) != self.key:
+            return ResourceState.OUTDATED
+        if (
+            (b := self.name in users_in_sudoer_file())
+            and not self.sudo
+            or not b
+            and self.sudo
+        ):
+            return ResourceState.OUTDATED
+        return ResourceState.PRESENT
+
 
 @dataclass(frozen=True)
 class UsersConfig:
     ignore: frozenset[str] = field(default_factory=frozenset)
     users: frozenset[User] = field(default_factory=frozenset)
+    delete: frozenset[User] | None = None
 
 
 def load_pre_users_config(id: str) -> UsersConfig:
@@ -61,6 +89,19 @@ def load_pre_users_config(id: str) -> UsersConfig:
             base64.b64decode((ASSETS_DIR / id / "payload").read_bytes()).decode("utf-8")
         )["data"],
         UsersConfig,
+    )
+
+
+def load_users_config(id: str) -> UsersConfig:
+    pre_users_config = load_pre_users_config(id)
+
+    to_delete, to_add, to_update, to_sudoers = Users(
+        users=pre_users_config.users, ignore_users=pre_users_config.ignore
+    ).state(Users(users=manageable_users()))
+    return UsersConfig(
+        ignore=pre_users_config.ignore,
+        users=frozenset(to_add.union(to_update).union(to_sudoers)),
+        delete=frozenset(to_delete),
     )
 
 
@@ -147,10 +188,29 @@ def read_pub_key(p: Path) -> str | None:
         return None
 
 
+@functools.cache
+def users_in_sudoer_file() -> frozenset[str]:
+    try:
+        with SUDOERS_FILE.open("r") as f:
+            return frozenset(map(lambda s: s.split(" ")[0], f.readlines()))
+    except FileNotFoundError:
+        return frozenset()
+
+
+def in_sudoer_file(user: str) -> bool:
+    return user in users_in_sudoer_file()
+
+
 def pw_entry_to_user(pw: pwd.struct_passwd) -> User:
-    return User(pw.pw_name, Path(pw.pw_dir), read_pub_key(Path(pw.pw_dir)))
+    return User(
+        name=pw.pw_name,
+        home=Path(pw.pw_dir),
+        key=read_pub_key(Path(pw.pw_dir)),
+        sudo=in_sudoer_file(pw.pw_name),
+    )
 
 
+@functools.cache
 def manageable_users() -> frozenset[User]:
     return frozenset(
         map(
@@ -159,12 +219,18 @@ def manageable_users() -> frozenset[User]:
     )
 
 
+@functools.cache
+def manageable_user_names() -> frozenset[str]:
+    return frozenset(map(lambda u: u.name, manageable_users()))
+
+
 @dataclass(frozen=True)
 class Users:
     users: frozenset[User] = field(default_factory=frozenset)
     name: str = "users"
     ignore_users: frozenset[str] = field(default_factory=frozenset)
     all_users: frozenset[User] | None = None
+    delete_users: frozenset[User] | None = None
 
     async def provision(self, apply: bool = False) -> None:
         delete_users, add_users, update_users, sudo_users = self.state(
@@ -212,7 +278,12 @@ class Users:
                 ignore_users=users_config.ignore,
             )
         else:
-            raise NotImplemented()
+            users_config = load_users_config(step_id)
+            return Users(
+                ignore_users=users_config.ignore,
+                users=users_config.users,
+                delete_users=users_config.delete,
+            )
 
     def state(
         self, all_users: "Users"
