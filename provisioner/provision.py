@@ -265,18 +265,15 @@ class Provisioner:
 
     async def provision(self, step: str | None, apply: bool = False) -> None:
         for s in filter(lambda s: not step or s.name == step, self.steps):
-            print(f"Provision step {s.name}")
             await s.provision(apply=apply)
 
     async def deprovision(self, step: str | None, apply: bool = False) -> None:
         for s in filter(lambda s: not step or s.name == step, self.steps):
-            print(f"Deprovision step {s.name}")
             await s.deprovision(apply=apply)
 
     async def refresh(self, step: str | None, step_id: str, pre: bool) -> None:
         xs = []
         for s in filter(lambda s: not step or s.name == step, self.steps):
-            print(f"Refresh step {s.name}")
             xs.append(await s.refresh(step_id=step_id, pre=pre))
         print(typedload.dump(xs))
 
