@@ -1,0 +1,20 @@
+[project]
+name = "ssh-provider"
+version = "0.1.0"
+description = "SSH based provisioner to be used by pulumi"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiofiles>=24.1.0",
+    "typedload>=2.35",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest-asyncio>=0.24.0",
+    "pytest>=8.3.3",
+    "ruff>=0.7.2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
