@@ -73,12 +73,15 @@ class User:
     home: Path
     key: str | None
 
+    async def write_authorized_keys(self) -> None:
+        await write_authorized_keys(self.authorized_keys, self.key)
+
     async def delete(self) -> None:
         await run_command(["/usr/sbin/userdel", "-r", self.name])
 
     async def create(self) -> None:
         await run_command(["/usr/sbin/useradd", "-m", "-U", "-G", "sudo", self.name])
-        await write_authorized_keys(self.authorized_keys, self.key)
+        await self.write_authorized_keys()
 
     @property
     def authorized_keys(self) -> Path:
