@@ -44,13 +44,17 @@ async def run_command(
     cmd: list[str],
     err_f: Callable[[str], str] = lambda x: x,
     out_f: Callable[[str], str] = lambda x: x,
-) -> tuple[int, str, str]:
+) -> tuple[int, str | None, str | None]:
     p = await asyncio.subprocess.create_subprocess_exec(
         cmd[0], *cmd[1:], stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
     r = await p.wait()
-    stderr = err_f((await p.stderr.read()).decode("utf-8"))
-    stdout = out_f((await p.stdout.read()).decode("utf-8"))
+    stderr = (
+        err_f((await p.stderr.read()).decode("utf-8")) if p.stderr is not None else None
+    )
+    stdout = (
+        out_f((await p.stdout.read()).decode("utf-8")) if p.stdout is not None else None
+    )
 
     if r > 0:
         raise CommandError(
@@ -62,7 +66,7 @@ async def run_command(
 
 
 async def write_authorized_keys(authorized_keys: Path, key: str) -> None:
-    with authorized_keys.open("w") as f:
+    with authorized_keys.open("wb") as f:
         authorized_keys.parent.mkdir(parents=True, exist_ok=True)
         f.write(base64.b64decode(key))
 
@@ -74,7 +78,8 @@ class User:
     key: str | None
 
     async def write_authorized_keys(self) -> None:
-        await write_authorized_keys(self.authorized_keys, self.key)
+        if self.key:
+            await write_authorized_keys(self.authorized_keys, self.key)
 
     async def delete(self) -> None:
         await run_command(["/usr/sbin/userdel", "-r", self.name])
@@ -97,9 +102,13 @@ class FileInfo:
 
 @dataclass
 class Step(Protocol):
-    async def provision(self) -> None: ...
+    @property
+    def name(self):
+        str: ...
 
-    async def unprovision(self) -> None: ...
+    async def provision(self, apply: bool = False) -> None: ...
+
+    async def deprovision(self, apply: bool = False) -> None: ...
 
 
 def read_pub_key(p: Path) -> str | None:
@@ -130,7 +139,9 @@ def get_user(user: str) -> pwd.struct_passwd | None:
         ),
         None,
     )
-    return pw_entry_to_user(pw) if pw is not None else None
+    if pw is None:
+        return None
+    return pw_entry_to_user(pw)
 
 
 @dataclass(frozen=True)
