@@ -188,11 +188,9 @@ class Users:
                     key=key,
                     home=home,
                 ) if user.key != key or user.home != home:
-                    update_users.add(u_user := User(
-                        name=user.name,
-                        key=user.key,
-                        home=home
-                    ))
+                    update_users.add(
+                        u_user := User(name=user.name, key=user.key, home=home)
+                    )
                     all_users_dict[user.name] = u_user
                 case User() as user:
                     existing_users.add(user)
@@ -202,7 +200,10 @@ class Users:
             set(
                 filter(
                     lambda u: u.name not in self.ignore_users,
-                    (set(all_users_dict.values()) - add_users.union(existing_users).union(update_users)),
+                    (
+                        set(all_users_dict.values())
+                        - add_users.union(existing_users).union(update_users)
+                    ),
                 )
             ),
             add_users,

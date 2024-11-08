@@ -58,13 +58,7 @@ def test_users_state_4() -> None:
     """
     assert Users(users={generate_test_user("user1")}).state(
         Users(users={generate_test_user("user1", home=Path("/root"))})
-    ) == (
-        set(),
-        set(),
-        {
-            generate_test_user("user1", home=Path("/root"))
-        }
-    )
+    ) == (set(), set(), {generate_test_user("user1", home=Path("/root"))})
 
 
 def test_users_state_5() -> None:
@@ -117,9 +111,13 @@ def test_users_state_7() -> None:
         users={
             generate_test_user("user1", key="key1"),
         },
-    ).state(Users(users={
-        generate_test_user("user1", key="key2"),
-    })) == (
+    ).state(
+        Users(
+            users={
+                generate_test_user("user1", key="key2"),
+            }
+        )
+    ) == (
         set(),
         set(),
         {
@@ -139,7 +137,7 @@ def test_users_state_8() -> None:
         set(),
         {
             generate_test_user("user1", home=Path("/root"), key="key1"),
-        }
+        },
     )
 
 
