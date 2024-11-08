@@ -1,3 +1,4 @@
+from __future__ import annotations
 import argparse
 import asyncio.subprocess
 import base64
@@ -6,27 +7,19 @@ import pwd
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, AsyncContextManager, Callable
+from pwd import struct_passwd
+from typing import Protocol, Callable, AsyncIterator, TypeGuard
 
 import typedload
-
-
-__all__ = []
 
 
 ASSETS_DIR = Path("/tmp") / "provisioner"
 
 
 @dataclass(frozen=True)
-class SSHUser:
-    name: str
-    ssh_key: str
-
-
-@dataclass(frozen=True)
 class UsersConfig:
     ignore: frozenset[str] = field(default_factory=frozenset)
-    users: frozenset[SSHUser] = field(default_factory=frozenset)
+    users: frozenset[User] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)
@@ -103,8 +96,11 @@ class FileInfo:
 @dataclass
 class Step(Protocol):
     @property
-    def name(self):
-        str: ...
+    def __match_args__(self) -> tuple[str, ...]:
+        return ("name",)
+
+    @property
+    def name(self) -> str: ...
 
     async def provision(self, apply: bool = False) -> None: ...
 
@@ -124,24 +120,12 @@ def pw_entry_to_user(pw: pwd.struct_passwd) -> User:
     return User(pw.pw_name, Path(pw.pw_dir), read_pub_key(Path(pw.pw_dir)))
 
 
-def manageable_users() -> set[User]:
-    return set(
+def manageable_users() -> frozenset[User]:
+    return frozenset(
         map(
             pw_entry_to_user, filter(lambda s: 1000 <= s.pw_uid <= 2000, pwd.getpwall())
         )
     )
-
-
-def get_user(user: str) -> pwd.struct_passwd | None:
-    pw = next(
-        filter(
-            lambda s: s.pw_name == user and 1000 <= s.pw_uid <= 2000, pwd.getpwnam(user)
-        ),
-        None,
-    )
-    if pw is None:
-        return None
-    return pw_entry_to_user(pw)
 
 
 @dataclass(frozen=True)
@@ -238,7 +222,7 @@ class Provisioner:
 
 
 @asynccontextmanager
-async def create_provisioner(id: str, step: str) -> AsyncContextManager[Provisioner]:
+async def create_provisioner(id: str, step: str) -> AsyncIterator[Provisioner]:
     try:
         match step:
             case "users":
