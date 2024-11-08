@@ -25,7 +25,7 @@ def mock_commands(
 ) -> Iterator[MockCommands]:
     with patch("provisioner.provision.run_command") as run_command, patch(
         "provisioner.provision.write_authorized_keys"
-    ) as write_authorized_keys:
+    ) as write_authorized_keys, patch("provisioner.provision.write_sudoers_content"):
         try:
 
             def _run_command(

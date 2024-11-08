@@ -7,13 +7,16 @@ import pwd
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from pwd import struct_passwd
-from typing import Protocol, Callable, AsyncIterator, TypeGuard
+from typing import Protocol, Callable, AsyncIterator
 
 import typedload
 
 
+__all__ = ["Users"]
+
+
 ASSETS_DIR = Path("/tmp") / "provisioner"
+SUDOERS_FILE = Path("/etc/sudoers.d") / "ssh-provisioner"
 
 
 @dataclass(frozen=True)
@@ -64,11 +67,22 @@ async def write_authorized_keys(authorized_keys: Path, key: str) -> None:
         f.write(base64.b64decode(key))
 
 
+def write_sudoers_content(users: list[User]) -> None:
+    with SUDOERS_FILE.open("w") as f:
+        f.write(
+            "\n".join(
+                list(map(lambda u: f"{u.name} ALL=(ALL:ALL) NOPASSWD:ALL", users))
+            )
+            + "\n"
+        )
+
+
 @dataclass(frozen=True)
 class User:
     name: str
     home: Path
     key: str | None
+    sudo: bool = True
 
     async def write_authorized_keys(self) -> None:
         if self.key:
@@ -78,7 +92,11 @@ class User:
         await run_command(["/usr/sbin/userdel", "-r", self.name])
 
     async def create(self) -> None:
-        await run_command(["/usr/sbin/useradd", "-m", "-U", "-G", "sudo", self.name])
+        await run_command(
+            ["/usr/sbin/useradd", "-m", "-U"]
+            + (["-G", "sudo"] if self.sudo else [])
+            + [self.name]
+        )
         await self.write_authorized_keys()
 
     @property
@@ -136,7 +154,7 @@ class Users:
     all_users: frozenset[User] | None = None
 
     async def provision(self, apply: bool = False) -> None:
-        delete_users, add_users, update_users = self.state(
+        delete_users, add_users, update_users, sudo_users = self.state(
             Users(
                 users=self.all_users
                 if self.all_users is not None
@@ -159,6 +177,12 @@ class Users:
             if apply:
                 await user.write_authorized_keys()
 
+        if sudo_users and apply:
+            write_sudoers_content(sudo_users)
+
+        elif sudo_users:
+            print(f"Adding users to suders: ',',{sudo_users}")
+
     async def deprovision(self, apply: bool = False) -> None:
         current_users = set(map(lambda u: u.name, self.all_users or manageable_users()))
         for user in [user for user in self.users if user.name in current_users]:
@@ -167,7 +191,9 @@ class Users:
             else:
                 print(f"Removing user {user.name}")
 
-    def state(self, all_users: "Users") -> tuple[set[User], set[User], set[User]]:
+    def state(
+        self, all_users: "Users"
+    ) -> tuple[set[User], set[User], set[User], list[User]]:
         """
         Return users to delete, create or update.
 
@@ -203,6 +229,10 @@ class Users:
             ),
             add_users,
             update_users,
+            sorted(
+                list(filter(lambda u: u.sudo, add_users.union(update_users))),
+                key=lambda u: u.name,
+            ),
         )
 
 

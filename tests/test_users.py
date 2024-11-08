@@ -7,9 +7,11 @@ from tests.common import mock_commands
 
 
 def generate_test_user(
-    name: str, home: Path | None = None, key: str | None = None
+    name: str, home: Path | None = None, key: str | None = None, sudo: bool = True
 ) -> User:
-    return User(name, home or Path(f"/home/{name}"), f"{key or name}-some-key")
+    return User(
+        name, home or Path(f"/home/{name}"), f"{key or name}-some-key", sudo=sudo
+    )
 
 
 def test_users_state_0() -> None:
@@ -20,6 +22,7 @@ def test_users_state_0() -> None:
         set(),
         set(),
         set(),
+        [],
     )
 
 
@@ -31,6 +34,7 @@ def test_users_state_1() -> None:
         {generate_test_user("user1")},
         set(),
         set(),
+        [],
     )
 
 
@@ -40,7 +44,7 @@ def test_users_state_2() -> None:
     """
     assert Users(users=frozenset({generate_test_user("user1")})).state(
         Users(users=frozenset({generate_test_user("user1")}))
-    ) == (set(), set(), set())
+    ) == (set(), set(), set(), [])
 
 
 def test_users_state_3() -> None:
@@ -49,7 +53,14 @@ def test_users_state_3() -> None:
     """
     assert Users(users=frozenset({generate_test_user("user1")})).state(
         Users(users=frozenset({generate_test_user("user2")}))
-    ) == ({generate_test_user("user2")}, {generate_test_user("user1")}, set())
+    ) == (
+        {generate_test_user("user2")},
+        {generate_test_user("user1")},
+        set(),
+        [
+            generate_test_user("user1"),
+        ],
+    )
 
 
 def test_users_state_4() -> None:
@@ -58,7 +69,14 @@ def test_users_state_4() -> None:
     """
     assert Users(users=frozenset({generate_test_user("user1")})).state(
         Users(users=frozenset({generate_test_user("user1", home=Path("/root"))}))
-    ) == (set(), set(), {generate_test_user("user1", home=Path("/root"))})
+    ) == (
+        set(),
+        set(),
+        {
+            generate_test_user("user1", home=Path("/root")),
+        },
+        [generate_test_user("user1", home=Path("/root"))],
+    )
 
 
 def test_users_state_5() -> None:
@@ -87,6 +105,7 @@ def test_users_state_5() -> None:
         set(),
         set(),
         set(),
+        [],
     )
 
 
@@ -106,6 +125,7 @@ def test_users_state_6() -> None:
             generate_test_user("user1"),
         },
         set(),
+        [generate_test_user("user1")],
     )
 
 
@@ -133,6 +153,7 @@ def test_users_state_7() -> None:
         {
             generate_test_user("user1", key="key1"),
         },
+        [generate_test_user("user1", key="key1")],
     )
 
 
@@ -152,6 +173,7 @@ def test_users_state_8() -> None:
         {
             generate_test_user("user1", home=Path("/root"), key="key1"),
         },
+        [generate_test_user("user1", home=Path("/root"), key="key1")],
     )
 
 
@@ -163,7 +185,7 @@ async def test_users_0():
                     generate_test_user("user1"),
                 }
             ),
-            all_users=set(),
+            all_users=frozenset(),
         ).provision(apply=True)
         assert commands.run_command.call_args_list == [
             call(["/usr/sbin/useradd", "-m", "-U", "-G", "sudo", "user1"])
