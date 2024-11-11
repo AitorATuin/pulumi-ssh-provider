@@ -145,6 +145,8 @@ async def run_command(
     )
 
     if r > 0:
+        print(stderr)
+        print(stdout)
         raise CommandError(
             stderr=stderr,
             stdout=stdout,
@@ -239,63 +241,66 @@ def manageable_user_names() -> frozenset[str]:
 
 @dataclass(frozen=True)
 class Users:
+    id: str
     users: frozenset[User] = field(default_factory=frozenset)
     name: str = "users"
-    ignore_users: frozenset[str] = field(default_factory=frozenset)
+    ignore: frozenset[str] = field(default_factory=frozenset)
     all_users: frozenset[User] | None = None
-    delete_users: frozenset[User] | None = None
 
     async def provision(self, apply: bool = False) -> None:
         delete_users, add_users, update_users, sudo_users = self.state(
             Users(
+                self.id,
                 users=self.all_users
                 if self.all_users is not None
-                else manageable_users()
+                else manageable_users(),
             )
         )
+        print(f"Users to add: {[u.name for u in add_users]}")
+        print(f"Users to delete: {[u.name for u in delete_users]}")
+        print(f"Users to update: {[u.name for u in update_users]}")
+        print(f"Sudoers: {[u.name for u in sudo_users]}")
         for user in delete_users:
+            print(f"Removing user {user.name}")
             if apply:
                 await user.delete()
-            else:
-                print(f"Removing user {user.name}")
 
         for user in add_users:
+            print(f"Adding user {user.name}")
             if apply:
                 await user.create()
-            else:
-                print(f"Adding user {user.name}")
 
         for user in update_users:
+            print(f"Modifying key user {user.name}")
             if apply:
                 await user.write_authorized_keys()
 
-        if sudo_users and apply:
-            await write_sudoers_content(sudo_users)
-
-        elif sudo_users:
+        if sudo_users:
             print(f"Adding users to sudoers: {','.join([u.name for u in sudo_users])}")
+            if apply:
+                await write_sudoers_content(sudo_users)
 
     async def deprovision(self, apply: bool = False) -> None:
         current_users = set(map(lambda u: u.name, self.all_users or manageable_users()))
         for user in [user for user in self.users if user.name in current_users]:
+            print(f"Removing user {user.name}")
             if apply:
                 await user.delete()
-            else:
-                print(f"Removing user {user.name}")
 
     async def refresh(self, step_id: str, pre: bool) -> "Users":
         if pre:
             users_config = load_pre_users_config(step_id)
             return Users(
+                id=self.id,
                 users=users_config.users,
-                ignore_users=users_config.ignore,
+                ignore=users_config.ignore,
             )
         else:
             users_config = load_users_config(step_id)
             return Users(
-                ignore_users=users_config.ignore,
+                id=self.id,
+                ignore=users_config.ignore,
                 users=users_config.users,
-                delete_users=users_config.delete,
             )
 
     def state(
