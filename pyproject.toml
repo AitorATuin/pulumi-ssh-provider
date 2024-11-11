@@ -3,7 +3,7 @@ name = "ssh-provider"
 version = "0.1.0"
 description = "SSH based provisioner to be used by pulumi"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "aiofiles>=24.1.0",
     "typedload>=2.35",
