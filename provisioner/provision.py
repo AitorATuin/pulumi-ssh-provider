@@ -310,7 +310,7 @@ class Users:
         """
         Return users to delete, create or update.
 
-        Note that a modification here means changing the ssh_key
+        Note that a modification here means changing the key
         """
         add_users = set()
         update_users = set()
@@ -336,7 +336,7 @@ class Users:
         return (
             set(
                 filter(
-                    lambda u: u.name not in self.ignore_users,
+                    lambda u: u.name not in self.ignore,
                     (
                         set(all_users_dict.values())
                         - add_users.union(existing_users).union(update_users)
