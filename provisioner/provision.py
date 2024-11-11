@@ -45,6 +45,7 @@ class User:
     async def write_authorized_keys(self) -> None:
         if self.key:
             await write_authorized_keys(self.authorized_keys, self.key)
+            chown(self.authorized_keys, user=self.name, group=self.name)
 
     async def delete(self) -> None:
         await run_command(["/usr/sbin/userdel", "-r", self.name])
