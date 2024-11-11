@@ -346,7 +346,7 @@ class Users:
             add_users,
             update_users,
             sorted(
-                list(filter(lambda u: u.sudo, add_users.union(update_users))),
+                list(filter(lambda u: u.sudo, self.users)),
                 key=lambda u: u.name,
             ),
         )
