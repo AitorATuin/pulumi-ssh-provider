@@ -154,9 +154,10 @@ async def run_command(
 
 
 async def write_authorized_keys(authorized_keys: Path, key: str) -> None:
-    with authorized_keys.open("wb") as f:
-        authorized_keys.parent.mkdir(parents=True, exist_ok=True)
-        f.write(base64.b64decode(key))
+    print("Creating", authorized_keys.parent)
+    authorized_keys.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with authorized_keys.open("w") as f:
+        f.write(base64.b64decode(key).decode("utf-8"))
 
 
 async def write_sudoers_content(users: list[User]) -> None:
