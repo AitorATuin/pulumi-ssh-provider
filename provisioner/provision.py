@@ -42,10 +42,6 @@ class User:
     def home_dir(self) -> Path:
         return self.home or Path("/home/") / self.name
 
-    async def has_authorized_keys(self) -> None:
-        if self.key:
-            await write_authorized_keys(self.authorized_keys, self.key)
-
     async def write_authorized_keys(self) -> None:
         if self.key:
             await write_authorized_keys(self.authorized_keys, self.key)
