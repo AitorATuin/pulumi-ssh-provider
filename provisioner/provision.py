@@ -101,12 +101,13 @@ def load_users_config(
     pre_users_config = custom_pre_users_config or load_pre_users_config(id)
 
     to_delete, to_add, to_update, to_sudoers = Users(
-        users=pre_users_config.users, ignore_users=pre_users_config.ignore
+        id=id, users=pre_users_config.users, ignore=pre_users_config.ignore
     ).state(
         Users(
+            id=id,
             users=custom_manageable_users
             if custom_manageable_users is not None
-            else manageable_users()
+            else manageable_users(),
         )
     )
 
