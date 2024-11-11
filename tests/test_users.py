@@ -1,9 +1,13 @@
+import uuid
 from pathlib import Path
 
 from unittest.mock import call
 
 from provisioner.provision import Users, User, load_users_config, UsersConfig
 from tests.common import mock_commands
+
+
+TEST_USER_ID = "5a97ea12-28e8-4fa4-830f-a5573cbf360b"
 
 
 def generate_test_user(
@@ -18,7 +22,7 @@ def test_users_state_0() -> None:
     """
     No users anywhere
     """
-    assert Users().state(Users()) == (
+    assert Users(id=TEST_USER_ID).state(Users(id=TEST_USER_ID)) == (
         set(),
         set(),
         set(),
@@ -30,7 +34,7 @@ def test_users_state_1() -> None:
     """
     One user in system but no users wanted
     """
-    assert Users().state(Users(users=frozenset({generate_test_user("user1")}))) == (
+    assert Users(id=TEST_USER_ID).state(Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1")}))) == (
         {generate_test_user("user1")},
         set(),
         set(),
@@ -42,8 +46,8 @@ def test_users_state_2() -> None:
     """
     Same users wanted and in the system
     """
-    assert Users(users=frozenset({generate_test_user("user1")})).state(
-        Users(users=frozenset({generate_test_user("user1")}))
+    assert Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1")})).state(
+        Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1")}))
     ) == (set(), set(), set(), [])
 
 
@@ -51,8 +55,8 @@ def test_users_state_3() -> None:
     """
     different users wanted and in the system
     """
-    assert Users(users=frozenset({generate_test_user("user1")})).state(
-        Users(users=frozenset({generate_test_user("user2")}))
+    assert Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1")})).state(
+        Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user2")}))
     ) == (
         {generate_test_user("user2")},
         {generate_test_user("user1")},
@@ -67,8 +71,8 @@ def test_users_state_4() -> None:
     """
     Same users wanted but different home
     """
-    assert Users(users=frozenset({generate_test_user("user1")})).state(
-        Users(users=frozenset({generate_test_user("user1", home=Path("/root"))}))
+    assert Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1")})).state(
+        Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1", home=Path("/root"))}))
     ) == (
         set(),
         set(),
@@ -84,8 +88,9 @@ def test_users_state_5() -> None:
     Same users wanted and in the system but with differences
     """
     assert Users(
+        id=TEST_USER_ID,
         users=frozenset({generate_test_user("user1")}),
-        ignore_users=frozenset(
+        ignore=frozenset(
             {
                 "user2",
                 "user3",
@@ -93,6 +98,7 @@ def test_users_state_5() -> None:
         ),
     ).state(
         Users(
+            id=TEST_USER_ID,
             users=frozenset(
                 {
                     generate_test_user("user1"),
@@ -114,12 +120,13 @@ def test_users_state_6() -> None:
     Same users wanted and in the system but with differences
     """
     assert Users(
+        id=TEST_USER_ID,
         users=frozenset(
             {
                 generate_test_user("user1"),
             }
         ),
-    ).state(Users()) == (
+    ).state(Users(id=TEST_USER_ID)) == (
         set(),
         {
             generate_test_user("user1"),
@@ -134,6 +141,7 @@ def test_users_state_7() -> None:
     Same users wanted and in the system but with differences
     """
     assert Users(
+        id=TEST_USER_ID,
         users=frozenset(
             {
                 generate_test_user("user1", key="key1"),
@@ -141,6 +149,7 @@ def test_users_state_7() -> None:
         ),
     ).state(
         Users(
+            id=TEST_USER_ID,
             users=frozenset(
                 {
                     generate_test_user("user1", key="key2"),
@@ -161,8 +170,9 @@ def test_users_state_8() -> None:
     """
     Same users wanted but different home and different key
     """
-    assert Users(users=frozenset({generate_test_user("user1", key="key1")})).state(
+    assert Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1", key="key1")})).state(
         Users(
+            id=TEST_USER_ID,
             users=frozenset(
                 {generate_test_user("user1", home=Path("/root"), key="key2")}
             )
@@ -180,6 +190,7 @@ def test_users_state_8() -> None:
 async def test_users_0():
     with mock_commands() as commands:
         await Users(
+            id=TEST_USER_ID,
             users=frozenset(
                 {
                     generate_test_user("user1"),
@@ -231,6 +242,7 @@ async def test_users_2():
 async def test_users_3():
     with mock_commands() as commands:
         await Users(
+            id=TEST_ID,
             users=frozenset(
                 {
                     generate_test_user("user1"),
