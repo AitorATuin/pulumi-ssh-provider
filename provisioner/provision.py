@@ -291,18 +291,14 @@ class Users:
     async def refresh(self, step_id: str, pre: bool) -> "Users":
         if pre:
             users_config = load_pre_users_config(step_id)
-            return Users(
-                id=self.id,
-                users=users_config.users,
-                ignore=users_config.ignore,
-            )
         else:
             users_config = load_users_config(step_id)
-            return Users(
-                id=self.id,
-                ignore=users_config.ignore,
-                users=users_config.users,
-            )
+
+        return Users(
+            id=self.id,
+            users=users_config.users,
+            ignore=users_config.ignore,
+        )
 
     def state(
         self, all_users: "Users"
