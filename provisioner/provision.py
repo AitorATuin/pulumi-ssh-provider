@@ -325,7 +325,10 @@ class Users:
                 ) if user.key != key or user.home_dir != home or user.sudo != sudo:
                     update_users.add(
                         u_user := User(
-                            name=user.name, key=user.key, home=home or user.home_dir, sudo=user.sudo
+                            name=user.name,
+                            key=user.key,
+                            home=home or user.home_dir,
+                            sudo=user.sudo,
                         )
                     )
                     all_users_dict[user.name] = u_user

@@ -34,7 +34,9 @@ def test_users_state_1() -> None:
     """
     One user in system but no users wanted
     """
-    assert Users(id=TEST_USER_ID).state(Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1")}))) == (
+    assert Users(id=TEST_USER_ID).state(
+        Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1")}))
+    ) == (
         {generate_test_user("user1")},
         set(),
         set(),
@@ -72,7 +74,10 @@ def test_users_state_4() -> None:
     Same users wanted but different home
     """
     assert Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1")})).state(
-        Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1", home=Path("/root"))}))
+        Users(
+            id=TEST_USER_ID,
+            users=frozenset({generate_test_user("user1", home=Path("/root"))}),
+        )
     ) == (
         set(),
         set(),
@@ -105,7 +110,7 @@ def test_users_state_5() -> None:
                     generate_test_user("user2"),
                     generate_test_user("user3"),
                 }
-            )
+            ),
         )
     ) == (
         set(),
@@ -154,7 +159,7 @@ def test_users_state_7() -> None:
                 {
                     generate_test_user("user1", key="key2"),
                 }
-            )
+            ),
         )
     ) == (
         set(),
@@ -170,12 +175,14 @@ def test_users_state_8() -> None:
     """
     Same users wanted but different home and different key
     """
-    assert Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1", key="key1")})).state(
+    assert Users(
+        id=TEST_USER_ID, users=frozenset({generate_test_user("user1", key="key1")})
+    ).state(
         Users(
             id=TEST_USER_ID,
             users=frozenset(
                 {generate_test_user("user1", home=Path("/root"), key="key2")}
-            )
+            ),
         )
     ) == (
         set(),
