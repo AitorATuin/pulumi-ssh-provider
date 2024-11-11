@@ -354,21 +354,20 @@ class Users:
 
 @dataclass
 class Provisioner:
-    steps: list[Step]
+    step: Step
 
-    async def provision(self, step: str | None, apply: bool = False) -> None:
-        for s in filter(lambda s: not step or s.name == step, self.steps):
-            await s.provision(apply=apply)
+    async def provision(self, apply: bool = False) -> None:
+        await self.step.provision(apply=apply)
 
-    async def deprovision(self, step: str | None, apply: bool = False) -> None:
-        for s in filter(lambda s: not step or s.name == step, self.steps):
-            await s.deprovision(apply=apply)
+    async def deprovision(self, apply: bool = False) -> None:
+        await self.step.deprovision(apply=apply)
 
-    async def refresh(self, step: str | None, step_id: str, pre: bool) -> None:
-        xs = []
-        for s in filter(lambda s: not step or s.name == step, self.steps):
-            xs.append(await s.refresh(step_id=step_id, pre=pre))
-        print(typedload.dump(xs))
+    async def refresh(self, step_id: str, pre: bool) -> None:
+        print(
+            json.dumps(
+                typedload.dump(await self.step.refresh(step_id=step_id, pre=pre))
+            )
+        )
 
 
 @asynccontextmanager
@@ -385,11 +384,9 @@ async def create_provisioner(id: str, step: str) -> AsyncIterator[Provisioner]:
                     UsersConfig,
                 )
                 yield Provisioner(
-                    steps=[
-                        Users(
-                            users=users_config.users, ignore_users=users_config.ignore
-                        )
-                    ],
+                    step=Users(
+                        id=id, users=users_config.users, ignore=users_config.ignore
+                    )
                 )
             case step:
                 raise ValueError(f"Unexpected step {step}")
@@ -401,11 +398,11 @@ async def run(step: str, command: str, id: str, apply: bool, pre: bool) -> None:
     async with create_provisioner(id, step) as provisioner:
         match command:
             case "provision":
-                await provisioner.provision(step=step, apply=apply)
+                await provisioner.provision(apply=apply)
             case "deprovision":
-                await provisioner.deprovision(step=step, apply=apply)
+                await provisioner.deprovision(apply=apply)
             case "refresh":
-                await provisioner.refresh(step=step, step_id=id, pre=pre)
+                await provisioner.refresh(step_id=id, pre=pre)
             case command:
                 raise Exception(f"Command unknown: {command}")
 
