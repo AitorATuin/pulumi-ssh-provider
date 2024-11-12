@@ -309,8 +309,6 @@ class Users:
     users: frozenset[User] = field(default_factory=frozenset)
     name: str = "users"
     ignore: frozenset[str] = field(default_factory=frozenset)
-    all_users: frozenset[User] | None = None
-    all_sudoers: frozenset[str] | None = None
 
     async def provision(self, apply: bool = False) -> None:
         """
@@ -319,9 +317,7 @@ class Users:
         await self.state(
             Users(
                 self.id,
-                users=self.all_users
-                if self.all_users is not None
-                else manageable_users(),
+                users=manageable_users(),
             )
         ).provision(apply=apply)
 
@@ -382,13 +378,10 @@ class Users:
                 case None:
                     add_users.add(user)
 
-        current_sudoers = (
-            self.all_sudoers if self.all_sudoers is not None else users_in_sudoer_file()
-        )
         expected_sudoers = frozenset(
             map(lambda u: u.name, filter(lambda u: u.sudo, self.users))
         )
-
+        current_sudoers = users_in_sudoer_file()
         return UsersDiff(
             users_final=frozenset(self.users),
             users_to_delete=frozenset(

@@ -1,4 +1,3 @@
-import uuid
 from pathlib import Path
 
 from unittest.mock import call
@@ -9,13 +8,12 @@ from provisioner.provision import (
     load_users_config,
     UsersConfig,
     UsersDiff,
-    users_in_sudoer_file,
     ResourceState,
     ResourceMissing,
     ResourceOutdated,
     ResourcePresent,
 )
-from tests.common import mock_commands, MockCommands
+from tests.common import mock_commands
 
 TEST_USER_ID = "5a97ea12-28e8-4fa4-830f-a5573cbf360b"
 
@@ -52,171 +50,202 @@ def test_users_state_1() -> None:
 
 
 def test_users_state_2() -> None:
-    """
-    Same users wanted and in the system
-    """
-    assert Users(
-        id=TEST_USER_ID,
-        users=(us := frozenset({generate_test_user("user1")})),
-        all_sudoers=frozenset({"user1"}),
-    ).state(
-        Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1")}))
-    ) == UsersDiff(users_final=us, sudoers_final=frozenset([u.name for u in us]))
+    with mock_commands(
+        users_in_sudoer=frozenset({"user1"}),
+    ):
+        assert Users(
+            id=TEST_USER_ID,
+            users=(us := frozenset({generate_test_user("user1")})),
+        ).state(
+            Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1")}))
+        ) == UsersDiff(users_final=us, sudoers_final=frozenset([u.name for u in us]))
 
 
 def test_users_state_3() -> None:
-    """
-    different users wanted and in the system
-    """
-    assert Users(
-        id=TEST_USER_ID,
-        users=(us := frozenset({generate_test_user("user1")})),
-        all_sudoers=frozenset({"user1"}),
-    ).state(
-        Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user2")}))
-    ) == UsersDiff(
-        users_final=us,
-        users_to_delete=frozenset({generate_test_user("user2")}),
-        users_to_add=frozenset({generate_test_user("user1")}),
-        sudoers_final=frozenset({"user1"}),
-    )
+    with mock_commands(
+        users_in_sudoer=frozenset({"user1"}),
+    ):
+        assert Users(
+            id=TEST_USER_ID,
+            users=(us := frozenset({generate_test_user("user1")})),
+        ).state(
+            Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user2")}))
+        ) == UsersDiff(
+            users_final=us,
+            users_to_delete=frozenset({generate_test_user("user2")}),
+            users_to_add=frozenset({generate_test_user("user1")}),
+            sudoers_final=frozenset({"user1"}),
+        )
 
 
 def test_users_state_4() -> None:
-    """
-    Same users wanted but different home
-    """
-    assert Users(
-        id=TEST_USER_ID,
-        users=(us := frozenset({generate_test_user("user1")})),
-        all_sudoers=frozenset({"user1"}),
-    ).state(
-        Users(
+    with mock_commands(
+        users_in_sudoer=frozenset({"user1"}),
+    ):
+        assert Users(
             id=TEST_USER_ID,
-            users=frozenset({generate_test_user("user1", home=Path("/root"))}),
+            users=(us := frozenset({generate_test_user("user1")})),
+        ).state(
+            Users(
+                id=TEST_USER_ID,
+                users=frozenset({generate_test_user("user1", home=Path("/root"))}),
+            )
+        ) == UsersDiff(
+            users_final=us,
+            users_to_update=frozenset(
+                {generate_test_user("user1", home=Path("/root"))}
+            ),
+            sudoers_final=frozenset({"user1"}),
         )
-    ) == UsersDiff(
-        users_final=us,
-        users_to_update=frozenset({generate_test_user("user1", home=Path("/root"))}),
-        sudoers_final=frozenset({"user1"}),
-    )
 
 
 def test_users_state_5() -> None:
-    """
-    Same users wanted and in the system but with differences
-    """
-    assert Users(
-        id=TEST_USER_ID,
-        users=(us := frozenset({generate_test_user("user1")})),
-        ignore=frozenset(
-            {
-                "user2",
-                "user3",
-            }
-        ),
-        all_sudoers=frozenset({"user1"}),
-    ).state(
-        Users(
+    with mock_commands(
+        users_in_sudoer=frozenset({"user1"}),
+    ):
+        assert Users(
             id=TEST_USER_ID,
-            users=frozenset(
+            users=(us := frozenset({generate_test_user("user1")})),
+            ignore=frozenset(
                 {
-                    generate_test_user("user1"),
-                    generate_test_user("user2"),
-                    generate_test_user("user3"),
+                    "user2",
+                    "user3",
                 }
             ),
-        )
-    ) == UsersDiff(users_final=us, sudoers_final=frozenset({"user1"}))
+        ).state(
+            Users(
+                id=TEST_USER_ID,
+                users=frozenset(
+                    {
+                        generate_test_user("user1"),
+                        generate_test_user("user2"),
+                        generate_test_user("user3"),
+                    }
+                ),
+            )
+        ) == UsersDiff(users_final=us, sudoers_final=frozenset({"user1"}))
 
 
 def test_users_state_6() -> None:
-    """
-    Same users wanted and in the system but with differences
-    """
-    assert Users(
-        id=TEST_USER_ID,
-        users=(
-            us := frozenset(
+    with mock_commands(
+        users_in_sudoer=frozenset({"user1"}),
+    ):
+        assert Users(
+            id=TEST_USER_ID,
+            users=(
+                us := frozenset(
+                    {
+                        generate_test_user("user1"),
+                    }
+                )
+            ),
+        ).state(Users(id=TEST_USER_ID)) == UsersDiff(
+            users_final=us,
+            users_to_add=frozenset(
                 {
                     generate_test_user("user1"),
                 }
-            )
-        ),
-        all_sudoers=frozenset({"user1"}),
-    ).state(Users(id=TEST_USER_ID)) == UsersDiff(
-        users_final=us,
-        users_to_add=frozenset(
-            {
-                generate_test_user("user1"),
-            }
-        ),
-        sudoers_final=frozenset({"user1"}),
-    )
+            ),
+            sudoers_final=frozenset({"user1"}),
+        )
 
 
 def test_users_state_7() -> None:
-    """
-    Same users wanted and in the system but with differences
-    """
-    assert Users(
-        id=TEST_USER_ID,
-        users=(
-            us := frozenset(
+    with mock_commands(
+        users_in_sudoer=frozenset({"user1"}),
+    ):
+        assert Users(
+            id=TEST_USER_ID,
+            users=(
+                us := frozenset(
+                    {
+                        generate_test_user("user1", key="key1"),
+                    }
+                )
+            ),
+        ).state(
+            Users(
+                id=TEST_USER_ID,
+                users=frozenset(
+                    {
+                        generate_test_user("user1", key="key2"),
+                    }
+                ),
+            )
+        ) == UsersDiff(
+            users_final=us,
+            users_to_update=frozenset(
                 {
                     generate_test_user("user1", key="key1"),
                 }
-            )
-        ),
-        all_sudoers=frozenset({"user1"}),
-    ).state(
-        Users(
-            id=TEST_USER_ID,
-            users=frozenset(
-                {
-                    generate_test_user("user1", key="key2"),
-                }
             ),
+            sudoers_final=frozenset({"user1"}),
         )
-    ) == UsersDiff(
-        users_final=us,
-        users_to_update=frozenset(
-            {
-                generate_test_user("user1", key="key1"),
-            }
-        ),
-        sudoers_final=frozenset({"user1"}),
-    )
 
 
 def test_users_state_8() -> None:
-    """
-    Same users wanted but different home and different key
-    """
-    assert Users(
-        id=TEST_USER_ID,
-        users=(us := frozenset({generate_test_user("user1", key="key1")})),
-        all_sudoers=frozenset({"user1"}),
-    ).state(
-        Users(
+    with mock_commands(
+        users_in_sudoer=frozenset({"user1"}),
+    ):
+        assert Users(
             id=TEST_USER_ID,
-            users=frozenset(
-                {generate_test_user("user1", home=Path("/root"), key="key2")}
+            users=(
+                us := frozenset(
+                    {
+                        generate_test_user("user1", key="key1"),
+                    }
+                )
             ),
+        ).state(
+            Users(
+                id=TEST_USER_ID,
+                users=frozenset(
+                    {
+                        generate_test_user("user1", key="key2"),
+                    }
+                ),
+            )
+        ) == UsersDiff(
+            users_final=us,
+            users_to_update=frozenset(
+                {
+                    generate_test_user("user1", key="key1"),
+                }
+            ),
+            sudoers_final=frozenset({"user1"}),
         )
-    ) == UsersDiff(
-        users_final=us,
-        users_to_update=frozenset(
-            {
-                generate_test_user("user1", home=Path("/root"), key="key1"),
-            }
-        ),
-        sudoers_final=frozenset({"user1"}),
-    )
+
+
+def test_users_state_9() -> None:
+    with mock_commands(
+        users_in_sudoer=frozenset({"user1"}),
+    ):
+        assert Users(
+            id=TEST_USER_ID,
+            users=(us := frozenset({generate_test_user("user1", key="key1")})),
+        ).state(
+            Users(
+                id=TEST_USER_ID,
+                users=frozenset(
+                    {generate_test_user("user1", home=Path("/root"), key="key2")}
+                ),
+            )
+        ) == UsersDiff(
+            users_final=us,
+            users_to_update=frozenset(
+                {
+                    generate_test_user("user1", home=Path("/root"), key="key1"),
+                }
+            ),
+            sudoers_final=frozenset({"user1"}),
+        )
 
 
 async def test_users_provision_0():
-    with mock_commands() as commands:
+    with mock_commands(
+        manageable_users=frozenset(),
+        users_in_sudoer=frozenset(),
+    ) as commands:
         await Users(
             id=TEST_USER_ID,
             users=frozenset(
@@ -224,8 +253,6 @@ async def test_users_provision_0():
                     generate_test_user("user1"),
                 }
             ),
-            all_users=frozenset(),
-            all_sudoers=frozenset(),
         ).provision(apply=True)
         assert commands.run_command.call_args_list == [
             call(["/usr/sbin/useradd", "-m", "-U", "-G", "sudo", "user1"])
@@ -239,7 +266,10 @@ async def test_users_provision_0():
 
 
 async def test_users_provision_1():
-    with mock_commands() as commands:
+    with mock_commands(
+        manageable_users=frozenset({generate_test_user("user1")}),
+        users_in_sudoer=frozenset({"user1"}),
+    ) as commands:
         await Users(
             id=TEST_USER_ID,
             users=frozenset(
@@ -247,19 +277,16 @@ async def test_users_provision_1():
                     generate_test_user("user1"),
                 }
             ),
-            all_users=frozenset(
-                {
-                    generate_test_user("user1"),
-                }
-            ),
-            all_sudoers=frozenset({"user1"}),
         ).provision(apply=True)
         assert commands.write_authorized_keys.call_args_list == []
         assert commands.run_command.call_args_list == []
 
 
 async def test_users_provision_2():
-    with mock_commands() as commands:
+    with mock_commands(
+        manageable_users=frozenset({generate_test_user("user2")}),
+        users_in_sudoer=frozenset({"user1"}),
+    ) as commands:
         await Users(
             id=TEST_USER_ID,
             users=frozenset(
@@ -267,8 +294,6 @@ async def test_users_provision_2():
                     generate_test_user("user1"),
                 }
             ),
-            all_users=frozenset({generate_test_user("user2")}),
-            all_sudoers=frozenset({"user1"}),
         ).provision(apply=True)
         assert commands.run_command.call_args_list == [
             call(["/usr/sbin/userdel", "-r", "user2"]),
@@ -280,7 +305,10 @@ async def test_users_provision_2():
 
 
 async def test_users_provision_3():
-    with mock_commands() as commands:
+    with mock_commands(
+        manageable_users=frozenset({generate_test_user("user1", home=Path("/root"))}),
+        users_in_sudoer=frozenset({"user1"}),
+    ) as commands:
         await Users(
             id=TEST_USER_ID,
             users=frozenset(
@@ -288,8 +316,6 @@ async def test_users_provision_3():
                     generate_test_user("user1"),
                 }
             ),
-            all_users=frozenset({generate_test_user("user1", home=Path("/root"))}),
-            all_sudoers=frozenset({"user1"}),
         ).provision(apply=True)
         assert commands.run_command.call_args_list == []
         assert commands.write_authorized_keys.call_args_list == [
@@ -298,16 +324,18 @@ async def test_users_provision_3():
 
 
 async def test_users_provision_4():
-    with mock_commands() as commands:
+    with mock_commands(
+        manageable_users=frozenset(
+            {generate_test_user("user1", home=Path("/root"), key="not+this")}
+        ),
+        users_in_sudoer=frozenset({"user1"}),
+    ) as commands:
         await Users(
             id=TEST_USER_ID,
             users=frozenset(
                 {
                     generate_test_user("user1", key="key1"),
                 }
-            ),
-            all_users=frozenset(
-                {generate_test_user("user1", home=Path("/root"), key="not-this")}
             ),
         ).provision(apply=True)
         assert commands.run_command.call_args_list == []
