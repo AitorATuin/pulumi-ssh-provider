@@ -5,11 +5,12 @@ import enum
 import functools
 import json
 import pwd
+from codecs import ignore_errors
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from shutil import chown
-from typing import Protocol, Callable, AsyncIterator, Any
+from typing import Protocol, Callable, AsyncIterator, Any, Iterable
 
 import typedload
 
@@ -18,6 +19,9 @@ __all__ = [
     "Users",
     "load_users_config",
     "load_pre_users_config",
+    "UsersDiff",
+    "UsersConfig",
+    "User",
 ]
 
 
@@ -25,10 +29,31 @@ ASSETS_DIR = Path("/tmp") / "provisioner"
 SUDOERS_FILE = Path("/etc/sudoers.d") / "ssh-provisioner"
 
 
-class ResourceState(enum.Enum):
+
+class ResourceState:
+    pass
+
+
+class ResourceStatus(enum.Enum):
     MISSING = 0
     PRESENT = 1
     OUTDATED = 2
+
+
+@dataclass
+class ResourceMissing(ResourceState):
+    status: ResourceStatus = ResourceStatus.MISSING
+
+
+@dataclass
+class ResourcePresent(ResourceState):
+    status: ResourceStatus = ResourceStatus.PRESENT
+
+
+@dataclass
+class ResourceOutdated(ResourceState):
+    fields: list[str]
+    status: ResourceStatus = ResourceStatus.OUTDATED
 
 
 @dataclass(frozen=True)
@@ -62,26 +87,85 @@ class User:
     def authorized_keys(self) -> Path:
         return self.home_dir / ".ssh" / "authorized_keys"
 
+    @property
     def state(self) -> ResourceState:
-        if self.name not in manageable_user_names():
-            return ResourceState.MISSING
-        if read_pub_key(self.authorized_keys) != self.key:
-            return ResourceState.OUTDATED
-        if (
-            (b := self.name in users_in_sudoer_file())
-            and not self.sudo
-            or not b
-            and self.sudo
-        ):
-            return ResourceState.OUTDATED
-        return ResourceState.PRESENT
+        match manageable_user_dict().get(self.name):
+            case None:
+                return ResourceMissing()
+            case User(
+                key=key,
+                sudo=sudo,
+            ) if key == self.key and sudo == self.sudo:
+                return ResourcePresent()
+            case User(
+                key=key,
+                sudo=sudo
+            ):
+                return ResourceOutdated(
+                    fields=list(
+                        filter(
+                            None,
+                            (
+                                "key" if key != self.key else None,
+                                "sudo" if self.sudo != sudo else None,
+                            )
+                        )
+                    )
+                )
 
 
 @dataclass(frozen=True)
 class UsersConfig:
     ignore: frozenset[str] = field(default_factory=frozenset)
     users: frozenset[User] = field(default_factory=frozenset)
-    delete: frozenset[User] | None = None
+
+
+@dataclass(frozen=True)
+class UsersDiff:
+    users_final: frozenset[User] = field(default_factory=frozenset)
+    users_to_add: frozenset[User] = field(default_factory=frozenset)
+    users_to_delete: frozenset[User] = field(default_factory=frozenset)
+    users_to_update: frozenset[User] = field(default_factory=frozenset)
+    sudoers_final: frozenset[str] = field(default_factory=frozenset)
+    sudoers_to_add: frozenset[str] = field(default_factory=frozenset)
+    sudoers_to_delete: frozenset[str] = field(default_factory=frozenset)
+
+    async def provision(self, apply: bool) -> None:
+        print(f"Users to add: {[u.name for u in self.users_to_add]}")
+        print(f"Users to delete: {[u.name for u in self.users_to_delete]}")
+        print(f"Users to update: {[u.name for u in self.users_to_update]}")
+        print(f"Sudoers to delete: {self.sudoers_to_delete}")
+        print(f"Sudoers to add: {self.sudoers_to_delete}")
+
+        for user in self.users_to_delete:
+            print(f"Removing user {user.name}")
+            if apply:
+                await user.delete()
+
+        for user in self.users_to_add:
+            print(f"Adding user {user.name}")
+            if apply:
+                await user.create()
+
+        for user in self.users_to_update:
+            print(f"Modifying key user {user.name}")
+            if apply:
+                await user.write_authorized_keys()
+
+        if self.sudoers_final:
+            print(f"Adding users to sudoers: {','.join(self.sudoers_final)}")
+            if apply:
+                await write_sudoers_content(self.sudoers_final)
+        else:
+            print(f"No sudoer users found, removing sudoers file")
+            if apply:
+                SUDOERS_FILE.unlink()
+
+    async def deprovision(self, apply: bool = False) -> None:
+        for user in self.users_to_delete:
+            print(f"Removing user {user.name}")
+            if apply:
+                await user.delete()
 
 
 def load_pre_users_config(id: str) -> UsersConfig:
@@ -95,26 +179,15 @@ def load_pre_users_config(id: str) -> UsersConfig:
 
 def load_users_config(
     id: str,
-    custom_pre_users_config: UsersConfig | None = None,
-    custom_manageable_users: frozenset[User] | None = None,
 ) -> UsersConfig:
-    pre_users_config = custom_pre_users_config or load_pre_users_config(id)
-
-    to_delete, to_add, to_update, to_sudoers = Users(
-        id=id, users=pre_users_config.users, ignore=pre_users_config.ignore
-    ).state(
-        Users(
-            id=id,
-            users=custom_manageable_users
-            if custom_manageable_users is not None
-            else manageable_users(),
-        )
-    )
-
     return UsersConfig(
-        ignore=pre_users_config.ignore,
-        users=frozenset(to_add.union(to_update).union(to_sudoers)),
-        delete=frozenset(to_delete) if to_delete else None,
+        ignore=(pre := load_pre_users_config(id)).ignore,
+        users=frozenset(
+            filter(
+                lambda u: u.state.status == ResourceStatus.PRESENT,
+                pre.users
+            ),
+        )
     )
 
 
@@ -163,11 +236,11 @@ async def write_authorized_keys(authorized_keys: Path, key: str) -> None:
         f.write(base64.b64decode(key).decode("utf-8"))
 
 
-async def write_sudoers_content(users: list[User]) -> None:
+async def write_sudoers_content(users: Iterable[str]) -> None:
     with SUDOERS_FILE.open("w") as f:
         f.write(
             "\n".join(
-                list(map(lambda u: f"{u.name} ALL=(ALL:ALL) NOPASSWD:ALL", users))
+                list(map(lambda u: f"{u} ALL=(ALL:ALL) NOPASSWD:ALL", users))
             )
             + "\n"
         )
@@ -236,8 +309,8 @@ def manageable_users() -> frozenset[User]:
 
 
 @functools.cache
-def manageable_user_names() -> frozenset[str]:
-    return frozenset(map(lambda u: u.name, manageable_users()))
+def manageable_user_dict() -> dict[str, User]:
+    return {u.name: u for u in manageable_users()}
 
 
 @dataclass(frozen=True)
@@ -247,71 +320,61 @@ class Users:
     name: str = "users"
     ignore: frozenset[str] = field(default_factory=frozenset)
     all_users: frozenset[User] | None = None
+    all_sudoers: frozenset[str] | None = None
 
     async def provision(self, apply: bool = False) -> None:
-        delete_users, add_users, update_users, sudo_users = self.state(
+        """
+        Provision this state so current state matches it.
+        """
+        await self.state(
             Users(
                 self.id,
                 users=self.all_users
                 if self.all_users is not None
                 else manageable_users(),
             )
-        )
-        print(f"Users to add: {[u.name for u in add_users]}")
-        print(f"Users to delete: {[u.name for u in delete_users]}")
-        print(f"Users to update: {[u.name for u in update_users]}")
-        print(f"Sudoers: {[u.name for u in sudo_users]}")
-        for user in delete_users:
-            print(f"Removing user {user.name}")
-            if apply:
-                await user.delete()
-
-        for user in add_users:
-            print(f"Adding user {user.name}")
-            if apply:
-                await user.create()
-
-        for user in update_users:
-            print(f"Modifying key user {user.name}")
-            if apply:
-                await user.write_authorized_keys()
-
-        if sudo_users:
-            print(f"Adding users to sudoers: {','.join([u.name for u in sudo_users])}")
-            if apply:
-                await write_sudoers_content(sudo_users)
+        ).provision(apply=apply)
 
     async def deprovision(self, apply: bool = False) -> None:
-        current_users = set(map(lambda u: u.name, self.all_users or manageable_users()))
-        for user in [user for user in self.users if user.name in current_users]:
-            print(f"Removing user {user.name}")
-            if apply:
-                await user.delete()
+        """
+        Deprovision all the resources defined in this state
+        """
+        await UsersDiff(
+            users_to_delete=self.users
+        ).provision(apply=apply)
 
     async def refresh(self, step_id: str, pre: bool) -> "Users":
+        """
+        Return the current state
+        """
+        pre_users_config = load_pre_users_config(step_id)
         if pre:
-            users_config = load_pre_users_config(step_id)
-        else:
-            users_config = load_users_config(step_id)
-
+            return Users(
+                id=self.id,
+                users=pre_users_config.users,
+                ignore=pre_users_config.ignore,
+            )
         return Users(
             id=self.id,
-            users=users_config.users,
-            ignore=users_config.ignore,
+            ignore=pre_users_config.ignore,
+            users=frozenset(
+                filter(
+                    lambda u: u.state == ResourceState.PRESENT,
+                    pre_users_config.users,
+                ),
+            )
         )
 
     def state(
-        self, all_users: "Users"
-    ) -> tuple[set[User], set[User], set[User], list[User]]:
+        self, current_state: "Users"
+    ) -> UsersDiff:
         """
-        Return users to delete, create or update.
-
-        Note that a modification here means changing the key
+        Return the diff from the current state and the expected state.
         """
         add_users = set()
         update_users = set()
         existing_users = set()
-        all_users_dict = {s.name: s for s in all_users.users}
+        all_users_dict = {s.name: s for s in current_state.users}
         for user in self.users:
             match all_users_dict.get(user.name):
                 case User(
@@ -332,8 +395,13 @@ class Users:
                     existing_users.add(user)
                 case None:
                     add_users.add(user)
-        return (
-            set(
+
+        current_sudoers = self.all_sudoers if self.all_sudoers is not None else users_in_sudoer_file()
+        expected_sudoers = frozenset(map(lambda u: u.name, filter(lambda u: u.sudo, self.users)))
+
+        return UsersDiff(
+            users_final=frozenset(self.users),
+            users_to_delete=frozenset(
                 filter(
                     lambda u: u.name not in self.ignore,
                     (
@@ -342,12 +410,11 @@ class Users:
                     ),
                 )
             ),
-            add_users,
-            update_users,
-            sorted(
-                list(filter(lambda u: u.sudo, self.users)),
-                key=lambda u: u.name,
-            ),
+            users_to_add=frozenset(add_users),
+            users_to_update=frozenset(update_users),
+            sudoers_final=expected_sudoers,
+            sudoers_to_delete=current_sudoers.difference(expected_sudoers),
+            sudoers_to_add=expected_sudoers.difference(current_sudoers),
         )
 
 
