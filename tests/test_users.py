@@ -2,18 +2,21 @@ from pathlib import Path
 
 from unittest.mock import call
 
-from provisioner.provision import (
+from provisioner.users import (
     Users,
     User,
     load_users_config,
     UsersConfig,
     UsersDiff,
+)
+from provisioner.resources import (
     ResourceState,
     ResourceMissing,
     ResourceOutdated,
     ResourcePresent,
 )
 from tests.common import mock_commands
+
 
 TEST_USER_ID = "5a97ea12-28e8-4fa4-830f-a5573cbf360b"
 

@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Callable, Iterator
 from unittest.mock import patch, MagicMock
 
-from provisioner.provision import UsersConfig, User, manageable_user_dict
+from provisioner.users import UsersConfig, User, manageable_user_dict
+
 
 __all__ = [
     "mock_commands",
@@ -33,19 +34,17 @@ def mock_commands(
     pre_users_config: UsersConfig | None = None,
     pub_keys: dict[str, str] | None = None,
 ) -> Iterator[MockCommands]:
-    with patch("provisioner.provision.run_command") as run_command, patch(
-        "provisioner.provision.write_authorized_keys"
-    ) as write_authorized_keys, patch(
-        "provisioner.provision.write_sudoers_content"
-    ), patch("provisioner.provision.chown") as chown, patch(
-        "provisioner.provision.users_in_sudoer_file"
+    with patch("provisioner.users.run_command") as run_command, patch(
+        "provisioner.users.write_authorized_keys"
+    ) as write_authorized_keys, patch("provisioner.users.write_sudoers_content"), patch(
+        "provisioner.users.chown"
+    ) as chown, patch(
+        "provisioner.users.users_in_sudoer_file"
     ) as users_in_sudoer_file, patch(
-        "provisioner.provision.manageable_users"
+        "provisioner.users.manageable_users"
     ) as manageable_users_f, patch(
-        "provisioner.provision.load_pre_users_config"
-    ) as load_pre_users_config, patch(
-        "provisioner.provision.read_pub_key"
-    ) as read_pub_key:
+        "provisioner.users.load_pre_users_config"
+    ) as load_pre_users_config, patch("provisioner.users.read_pub_key") as read_pub_key:
         try:
 
             def _run_command(
