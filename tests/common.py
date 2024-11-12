@@ -77,6 +77,7 @@ def mock_commands(
                         return f"{user}-some-key"
                     case (_, key), _:
                         return key
+                return "unknown"
 
             if run_commands:
                 run_command.side_effect = _run_command

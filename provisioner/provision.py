@@ -5,12 +5,11 @@ import enum
 import functools
 import json
 import pwd
-from codecs import ignore_errors
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from shutil import chown
-from typing import Protocol, Callable, AsyncIterator, Any, Iterable
+from typing import Protocol, Callable, AsyncIterator, Any, Iterable, TypeGuard
 
 import typedload
 
@@ -29,14 +28,14 @@ ASSETS_DIR = Path("/tmp") / "provisioner"
 SUDOERS_FILE = Path("/etc/sudoers.d") / "ssh-provisioner"
 
 
-class ResourceState:
-    pass
-
-
 class ResourceStatus(enum.Enum):
     MISSING = 0
     PRESENT = 1
     OUTDATED = 2
+
+
+class ResourceState:
+    status: ResourceStatus
 
 
 @dataclass
@@ -348,7 +347,7 @@ class Users:
             ignore=pre_users_config.ignore,
             users=frozenset(
                 filter(
-                    lambda u: u.state == ResourceState.PRESENT,
+                    lambda u: u.state.status == ResourceStatus.PRESENT,
                     pre_users_config.users,
                 ),
             ),
