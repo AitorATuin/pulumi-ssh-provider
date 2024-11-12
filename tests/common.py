@@ -15,7 +15,6 @@ __all__ = [
 ]
 
 
-
 @dataclass
 class MockCommands:
     write_authorized_keys: MagicMock
@@ -25,6 +24,7 @@ class MockCommands:
     users_in_sudoer_file: MagicMock
     load_pre_users_config: MagicMock
 
+
 @contextlib.contextmanager
 def mock_commands(
     run_commands: dict[str, tuple[int, str, str]] | None = None,
@@ -33,15 +33,11 @@ def mock_commands(
     pre_users_config: UsersConfig | None = None,
     pub_keys: dict[str, str] | None = None,
 ) -> Iterator[MockCommands]:
-    with patch(
-        "provisioner.provision.run_command"
-    ) as run_command, patch(
+    with patch("provisioner.provision.run_command") as run_command, patch(
         "provisioner.provision.write_authorized_keys"
     ) as write_authorized_keys, patch(
         "provisioner.provision.write_sudoers_content"
-    ), patch(
-        "provisioner.provision.chown"
-    ) as chown, patch(
+    ), patch("provisioner.provision.chown") as chown, patch(
         "provisioner.provision.users_in_sudoer_file"
     ) as users_in_sudoer_file, patch(
         "provisioner.provision.manageable_users"
@@ -65,11 +61,16 @@ def mock_commands(
                 return 1, None, None
 
             def _read_pub_key(p: Path) -> str:
-                match next(
-                    itertools.dropwhile(
-                        lambda t: str(p).startswith(t[0]),
-                        (pub_keys or {}).items(),
-                    ), None), p.parts:
+                match (
+                    next(
+                        itertools.dropwhile(
+                            lambda t: str(p).startswith(t[0]),
+                            (pub_keys or {}).items(),
+                        ),
+                        None,
+                    ),
+                    p.parts,
+                ):
                     case None, ["/", "home", user]:
                         return f"{user}-some-key"
                     case None, [user]:
@@ -79,9 +80,15 @@ def mock_commands(
 
             if run_commands:
                 run_command.side_effect = _run_command
-            users_in_sudoer_file.return_value = users_in_sudoer if users_in_sudoer else frozenset()
-            manageable_users_f.return_value = manageable_users if manageable_users else frozenset()
-            load_pre_users_config.return_value = pre_users_config if pre_users_config else UsersConfig()
+            users_in_sudoer_file.return_value = (
+                users_in_sudoer if users_in_sudoer else frozenset()
+            )
+            manageable_users_f.return_value = (
+                manageable_users if manageable_users else frozenset()
+            )
+            load_pre_users_config.return_value = (
+                pre_users_config if pre_users_config else UsersConfig()
+            )
             read_pub_key.side_effect = _read_pub_key
 
             yield MockCommands(

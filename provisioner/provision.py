@@ -29,7 +29,6 @@ ASSETS_DIR = Path("/tmp") / "provisioner"
 SUDOERS_FILE = Path("/etc/sudoers.d") / "ssh-provisioner"
 
 
-
 class ResourceState:
     pass
 
@@ -97,10 +96,7 @@ class User:
                 sudo=sudo,
             ) if key == self.key and sudo == self.sudo:
                 return ResourcePresent()
-            case User(
-                key=key,
-                sudo=sudo
-            ):
+            case User(key=key, sudo=sudo):
                 return ResourceOutdated(
                     fields=list(
                         filter(
@@ -108,7 +104,7 @@ class User:
                             (
                                 "key" if key != self.key else None,
                                 "sudo" if self.sudo != sudo else None,
-                            )
+                            ),
                         )
                     )
                 )
@@ -183,11 +179,8 @@ def load_users_config(
     return UsersConfig(
         ignore=(pre := load_pre_users_config(id)).ignore,
         users=frozenset(
-            filter(
-                lambda u: u.state.status == ResourceStatus.PRESENT,
-                pre.users
-            ),
-        )
+            filter(lambda u: u.state.status == ResourceStatus.PRESENT, pre.users),
+        ),
     )
 
 
@@ -239,9 +232,7 @@ async def write_authorized_keys(authorized_keys: Path, key: str) -> None:
 async def write_sudoers_content(users: Iterable[str]) -> None:
     with SUDOERS_FILE.open("w") as f:
         f.write(
-            "\n".join(
-                list(map(lambda u: f"{u} ALL=(ALL:ALL) NOPASSWD:ALL", users))
-            )
+            "\n".join(list(map(lambda u: f"{u} ALL=(ALL:ALL) NOPASSWD:ALL", users)))
             + "\n"
         )
 
@@ -339,9 +330,7 @@ class Users:
         """
         Deprovision all the resources defined in this state
         """
-        await UsersDiff(
-            users_to_delete=self.users
-        ).provision(apply=apply)
+        await UsersDiff(users_to_delete=self.users).provision(apply=apply)
 
     async def refresh(self, step_id: str, pre: bool) -> "Users":
         """
@@ -362,12 +351,10 @@ class Users:
                     lambda u: u.state == ResourceState.PRESENT,
                     pre_users_config.users,
                 ),
-            )
+            ),
         )
 
-    def state(
-        self, current_state: "Users"
-    ) -> UsersDiff:
+    def state(self, current_state: "Users") -> UsersDiff:
         """
         Return the diff from the current state and the expected state.
         """
@@ -396,8 +383,12 @@ class Users:
                 case None:
                     add_users.add(user)
 
-        current_sudoers = self.all_sudoers if self.all_sudoers is not None else users_in_sudoer_file()
-        expected_sudoers = frozenset(map(lambda u: u.name, filter(lambda u: u.sudo, self.users)))
+        current_sudoers = (
+            self.all_sudoers if self.all_sudoers is not None else users_in_sudoer_file()
+        )
+        expected_sudoers = frozenset(
+            map(lambda u: u.name, filter(lambda u: u.sudo, self.users))
+        )
 
         return UsersDiff(
             users_final=frozenset(self.users),
