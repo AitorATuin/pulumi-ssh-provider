@@ -28,7 +28,7 @@ class Step[R](Protocol):
 
     async def deprovision(self, apply: bool = False) -> None: ...
 
-    async def refresh(self, step_id: str, pre: bool) -> R: ...
+    async def refresh(self, step_id: str, pre: bool, apply: bool = True) -> R: ...
 
 
 @dataclass
@@ -41,10 +41,12 @@ class Provisioner:
     async def deprovision(self, apply: bool = False) -> None:
         await self.step.deprovision(apply=apply)
 
-    async def refresh(self, step_id: str, pre: bool) -> None:
+    async def refresh(self, step_id: str, pre: bool, apply: bool = True) -> None:
         print(
             json.dumps(
-                typedload.dump(await self.step.refresh(step_id=step_id, pre=pre))
+                typedload.dump(
+                    await self.step.refresh(step_id=step_id, pre=pre, apply=apply)
+                ),
             )
         )
 
@@ -69,7 +71,7 @@ async def run(step: str, command: str, id: str, apply: bool, pre: bool) -> None:
             case "deprovision":
                 await provisioner.deprovision(apply=apply)
             case "refresh":
-                await provisioner.refresh(step_id=id, pre=pre)
+                await provisioner.refresh(step_id=id, pre=pre, apply=apply)
             case command:
                 raise Exception(f"Command unknown: {command}")
 

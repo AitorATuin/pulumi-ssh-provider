@@ -168,7 +168,7 @@ class Users:
         """
         await UsersDiff(users_to_delete=self.users).provision(apply=apply)
 
-    async def refresh(self, step_id: str, pre: bool) -> "Users":
+    async def refresh(self, step_id: str, pre: bool, apply: bool = True) -> "Users":
         """
         Return the current state
         """
