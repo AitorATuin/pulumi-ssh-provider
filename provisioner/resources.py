@@ -64,3 +64,7 @@ async def run_command(
         )
 
     return r, stderr, stdout
+
+
+def rm_tree(path: Path) -> None:
+    shutil.rmtree(str(path), ignore_errors=True)
