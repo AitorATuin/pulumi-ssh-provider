@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Callable, Iterator
 from unittest.mock import patch, MagicMock
 
-from provisioner.bootstrap import VenvConfig
+from provisioner.bootstrap import VenvConfig, BootstrapConfig
 from provisioner.users import UsersConfig, User
 
 
@@ -27,6 +27,7 @@ class MockCommands:
     manageable_users: MagicMock
     users_in_sudoer_file: MagicMock
     load_pre_users_config: MagicMock
+    load_pre_bootstrap_config: MagicMock
     read_pub_key: MagicMock
     rm_tree: MagicMock
     load_venv_config: MagicMock
@@ -43,17 +44,19 @@ SIDE_EFFECT_MOCKS = [
     "provisioner.{}.read_pub_key",
     "provisioner.{}.rm_tree",
     "provisioner.{}.load_venv_config",
+    "provisioner.{}.load_pre_bootstrap_config",
 ]
 
 
 @contextlib.contextmanager
 def mock_commands(
     module: str,
-    run_commands: dict[str, tuple[int, str, str]] | None = None,
+    run_commands: dict[str, tuple[int, str | None, str | None]] | None = None,
     users_in_sudoer: frozenset[str] | None = None,
     manageable_users: frozenset[User] | None = None,
     pre_users_config: UsersConfig | None = None,
     pre_venv_config: VenvConfig | None = None,
+    pre_bootstrap_config: BootstrapConfig | None = None,
     pub_keys: dict[str, str] | None = None,
     reset_cache: list[_lru_cache_wrapper] | None = None,
 ) -> Iterator[MockCommands]:
@@ -122,6 +125,9 @@ def mock_commands(
             mock_command.load_venv_config.return_value = (
                 pre_venv_config if pre_venv_config else VenvConfig(id="test-resource")
             )
+        if mock_command.load_pre_bootstrap_config:
+            mock_command.load_pre_bootstrap_config.return_value = pre_bootstrap_config
+
         yield mock_command
     finally:
         for p in patches.values():
