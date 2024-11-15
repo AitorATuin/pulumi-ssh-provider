@@ -1,8 +1,18 @@
 import asyncio
+import base64
 import enum
+import json
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Any
+
+__all__ = [
+    "load_step",
+    "run_command",
+    "rm_tree",
+]
+
 
 ASSETS_DIR = Path("/tmp") / "provisioner"
 
@@ -37,6 +47,14 @@ class ResourcePresent(ResourceState):
 class ResourceOutdated(ResourceState):
     fields: list[str]
     status: ResourceStatus = ResourceStatus.OUTDATED
+
+
+def load_step(id: str) -> tuple[Any]:
+    return (
+        json.loads(
+            base64.b64decode((ASSETS_DIR / id / "payload").read_bytes()).decode("utf-8")
+        )["data"],
+    )
 
 
 async def run_command(

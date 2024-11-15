@@ -17,6 +17,7 @@ from provisioner.resources import (
     ResourceMissing,
     ResourceState,
     run_command,
+    load_step,
 )
 
 
@@ -218,7 +219,6 @@ class Users:
                     existing_users.add(user)
                 case None:
                     add_users.add(user)
-
         expected_sudoers = frozenset(
             map(lambda u: u.name, filter(lambda u: u.sudo, self.users))
         )
@@ -243,12 +243,7 @@ class Users:
 
 
 def load_pre_users_config(id: str) -> UsersConfig:
-    return typedload.load(
-        json.loads(
-            base64.b64decode((ASSETS_DIR / id / "payload").read_bytes()).decode("utf-8")
-        )["data"],
-        UsersConfig,
-    )
+    return typedload.load(load_step(id), UsersConfig)
 
 
 def load_users_config(

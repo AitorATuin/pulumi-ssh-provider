@@ -1,6 +1,5 @@
 import argparse
 import asyncio.subprocess
-import base64
 import json
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
