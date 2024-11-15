@@ -1,3 +1,4 @@
+from functools import partial
 from pathlib import Path
 
 from unittest.mock import call
@@ -8,9 +9,9 @@ from provisioner.users import (
     load_users_config,
     UsersConfig,
     UsersDiff,
+    manageable_user_dict,
 )
 from provisioner.resources import (
-    ResourceState,
     ResourceMissing,
     ResourceOutdated,
     ResourcePresent,
@@ -26,7 +27,6 @@ def generate_test_user(
     home: Path | None = None,
     key: str | None = None,
     sudo: bool = True,
-    state: ResourceState | None = None,
 ) -> User:
     return User(
         name,
@@ -34,6 +34,11 @@ def generate_test_user(
         f"{key or name}-some-key",
         sudo=sudo,
     )
+
+
+user_mock_commands = partial(
+    mock_commands, module="users", reset_cache=[manageable_user_dict]
+)
 
 
 def test_users_state_0() -> None:
@@ -53,7 +58,7 @@ def test_users_state_1() -> None:
 
 
 def test_users_state_2() -> None:
-    with mock_commands(
+    with user_mock_commands(
         users_in_sudoer=frozenset({"user1"}),
     ):
         assert Users(
@@ -61,11 +66,12 @@ def test_users_state_2() -> None:
             users=(us := frozenset({generate_test_user("user1")})),
         ).state(
             Users(id=TEST_USER_ID, users=frozenset({generate_test_user("user1")}))
-        ) == UsersDiff(users_final=us, sudoers_final=frozenset([u.name for u in us]))
+        ) == UsersDiff(users_final=us, sudoers_final=frozenset({"user1"}))
+        # assert False
 
 
 def test_users_state_3() -> None:
-    with mock_commands(
+    with user_mock_commands(
         users_in_sudoer=frozenset({"user1"}),
     ):
         assert Users(
@@ -82,7 +88,7 @@ def test_users_state_3() -> None:
 
 
 def test_users_state_4() -> None:
-    with mock_commands(
+    with user_mock_commands(
         users_in_sudoer=frozenset({"user1"}),
     ):
         assert Users(
@@ -103,7 +109,7 @@ def test_users_state_4() -> None:
 
 
 def test_users_state_5() -> None:
-    with mock_commands(
+    with user_mock_commands(
         users_in_sudoer=frozenset({"user1"}),
     ):
         assert Users(
@@ -130,7 +136,7 @@ def test_users_state_5() -> None:
 
 
 def test_users_state_6() -> None:
-    with mock_commands(
+    with user_mock_commands(
         users_in_sudoer=frozenset({"user1"}),
     ):
         assert Users(
@@ -154,7 +160,7 @@ def test_users_state_6() -> None:
 
 
 def test_users_state_7() -> None:
-    with mock_commands(
+    with user_mock_commands(
         users_in_sudoer=frozenset({"user1"}),
     ):
         assert Users(
@@ -187,7 +193,7 @@ def test_users_state_7() -> None:
 
 
 def test_users_state_8() -> None:
-    with mock_commands(
+    with user_mock_commands(
         users_in_sudoer=frozenset({"user1"}),
     ):
         assert Users(
@@ -220,7 +226,7 @@ def test_users_state_8() -> None:
 
 
 def test_users_state_9() -> None:
-    with mock_commands(
+    with user_mock_commands(
         users_in_sudoer=frozenset({"user1"}),
     ):
         assert Users(
@@ -245,7 +251,7 @@ def test_users_state_9() -> None:
 
 
 async def test_users_provision_0():
-    with mock_commands(
+    with user_mock_commands(
         manageable_users=frozenset(),
         users_in_sudoer=frozenset(),
     ) as commands:
@@ -269,7 +275,7 @@ async def test_users_provision_0():
 
 
 async def test_users_provision_1():
-    with mock_commands(
+    with user_mock_commands(
         manageable_users=frozenset({generate_test_user("user1")}),
         users_in_sudoer=frozenset({"user1"}),
     ) as commands:
@@ -286,7 +292,7 @@ async def test_users_provision_1():
 
 
 async def test_users_provision_2():
-    with mock_commands(
+    with user_mock_commands(
         manageable_users=frozenset({generate_test_user("user2")}),
         users_in_sudoer=frozenset({"user1"}),
     ) as commands:
@@ -308,7 +314,7 @@ async def test_users_provision_2():
 
 
 async def test_users_provision_3():
-    with mock_commands(
+    with user_mock_commands(
         manageable_users=frozenset({generate_test_user("user1", home=Path("/root"))}),
         users_in_sudoer=frozenset({"user1"}),
     ) as commands:
@@ -327,7 +333,7 @@ async def test_users_provision_3():
 
 
 async def test_users_provision_4():
-    with mock_commands(
+    with user_mock_commands(
         manageable_users=frozenset(
             {generate_test_user("user1", home=Path("/root"), key="not+this")}
         ),
@@ -348,7 +354,7 @@ async def test_users_provision_4():
 
 
 async def test_load_users_config_0() -> None:
-    with mock_commands(
+    with user_mock_commands(
         pre_users_config=(
             uc := UsersConfig(
                 users=frozenset(
@@ -365,7 +371,7 @@ async def test_load_users_config_0() -> None:
 
 
 async def test_load_users_config_1() -> None:
-    with mock_commands(
+    with user_mock_commands(
         pre_users_config=(
             uc := UsersConfig(
                 users=frozenset(
@@ -391,7 +397,7 @@ async def test_load_users_config_1() -> None:
 
 
 async def test_load_users_config_2() -> None:
-    with mock_commands(
+    with user_mock_commands(
         pre_users_config=(
             uc := UsersConfig(
                 users=frozenset(
@@ -422,7 +428,7 @@ async def test_load_users_config_2() -> None:
 
 
 async def test_load_users_config_3() -> None:
-    with mock_commands(
+    with user_mock_commands(
         pre_users_config=(
             uc := UsersConfig(
                 users=frozenset(
@@ -452,17 +458,17 @@ async def test_load_users_config_3() -> None:
 
 
 def test_user_state_0() -> None:
-    with mock_commands():
+    with user_mock_commands():
         assert generate_test_user("user1").state == ResourceMissing()
 
 
 def test_user_state_1() -> None:
-    with mock_commands(manageable_users=frozenset({generate_test_user("user1")})):
+    with user_mock_commands(manageable_users=frozenset({generate_test_user("user1")})):
         assert generate_test_user("user1").state == ResourcePresent()
 
 
 def test_user_state_2() -> None:
-    with mock_commands(
+    with user_mock_commands(
         manageable_users=frozenset({generate_test_user("user1", key="key2")})
     ):
         assert generate_test_user("user1").state == ResourceOutdated(
@@ -471,7 +477,7 @@ def test_user_state_2() -> None:
 
 
 def test_user_state_3() -> None:
-    with mock_commands(
+    with user_mock_commands(
         manageable_users=frozenset(
             {generate_test_user("user1", key="key2", sudo=False)}
         )
